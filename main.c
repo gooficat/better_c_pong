@@ -1,157 +1,131 @@
-#define SDL_MAIN_HANDLED
-#include <SDL2/SDL.h>
-#include <stdbool.h>
+#include <raylib.h>
 
-#define WIDTH 640
-#define HEIGHT 480
-#define GRID 32
-#define PADDLE_SPEED 500
-#define PADDLE_POWER 50
+const int SCREEN_WIDTH = 960;
+const int SCREEN_HEIGHT = 540;
 
+//for keeping paddles the same width as the ball
+int BLOCK_SCALING = 24;
 
-typedef struct {
-	int x, y;
-	int width, height;
-	int dy;
-} paddle_t;
+float PADDLE_SPEED = 400.0f;
+float BALL_SPEED = 400.0f;
 
-typedef struct {
-	int x, y;
-	int width, height;
-	bool reset;
-	int speed;
-	int dx, dy;
-} ball_t;
+int BALL_STARTX = SCREEN_WIDTH/2 - BLOCK_SCALING/2;
+int BALL_STARTY = SCREEN_HEIGHT/2 - BLOCK_SCALING/2;
 
-bool colliding(int x1, int y1, int w1, int h1, int x2, int y2, int w2, int h2) {
-	if (x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2)
-		return true;
-	else return false;
+int leftScore = 0;
+int rightScore = 0;
+
+bool RESET = false;
+
+int clamp_i(int in, int min, int max) {
+	if(in > max) return max;
+	if(in < min) return min;
+	return in;
 }
 
-int clamp(int value, int min, int max) {
-    if (value < min) return min;
-    if (value > max) return max;
-    return value;
-}
+class Paddle {
+public:
+	float x, y;
+	int width, height;
+	int UP_KEY, DOWN_KEY;
+	Paddle(int x, int y, int width, int height, int UP_KEY, int DOWN_KEY):
+			x(x), y(y), width(width), height(height), UP_KEY(UP_KEY), DOWN_KEY(DOWN_KEY) {}
+	void draw() {
+		DrawRectangle(x, y, width, height, RAYWHITE);
+	}
+	void update(float deltaTime) {
+		if(IsKeyDown(UP_KEY))
+			y -= PADDLE_SPEED * deltaTime;
+		if(IsKeyDown(DOWN_KEY))
+			y += PADDLE_SPEED * deltaTime;
+		y = clamp_i(y, 0, SCREEN_HEIGHT - height);
+	}
+};
+
+class Ball {
+public:
+	float x, y;
+	float size;
+	float x_velocity;
+	float y_velocity;
+	Ball(int size, int speed) :
+		x(BALL_STARTX), y(BALL_STARTY), size(size), x_velocity(speed/2), y_velocity(speed/2) {
+			
+		}
+	void draw() {
+		DrawRectangle(x, y, size, size, RAYWHITE);
+	}
+	void checkCourt() {
+		if (x + size > SCREEN_WIDTH) {
+			RESET = true;
+			leftScore++;
+		}
+		if (x < 0) {
+			RESET = true;
+			rightScore++;
+		}
+		if (y + size > SCREEN_HEIGHT or y < 0) {
+			y_velocity *= -1;
+		}
+	}
+	void update(float deltaTime) {
+		x += x_velocity * deltaTime;
+		y += y_velocity * deltaTime;
+	}
+	void checkPaddle(Paddle& paddle) {
+		if (x + size > paddle.x and x < paddle.x + paddle.width and y + size > paddle.y and y < paddle.y + paddle.height) {
+			x_velocity *= -1;
+		}
+		
+	}
+};
 
 int main() {
-	SDL_Init(SDL_INIT_EVERYTHING);
-	SDL_Window* window = SDL_CreateWindow("pong!", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, WIDTH, HEIGHT, 0);
-	SDL_Renderer* renderer = SDL_CreateRenderer(window, -1,  SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-
-
-	paddle_t left_paddle = {
-		.x = 0,
-		.y = HEIGHT/3,
-		.width = WIDTH/GRID,
-		.height = HEIGHT/3
-	};
-	paddle_t right_paddle = {
-		.x = (GRID-1) * (WIDTH/GRID),
-		.y = HEIGHT/3,
-		.width = WIDTH/GRID,
-		.height = HEIGHT/3
-	};
-	
-	ball_t ball = {
-		.x = WIDTH/2,
-		.y = HEIGHT/2,
-		.width = WIDTH/GRID,
-		.height = WIDTH/GRID,
-		.reset = false,
-		.speed = 300,
-		.dx = 1,
-		.dy = 1
-	};
-	
-	Uint32 lastFrameTime = SDL_GetTicks();
+	InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Pong!");
+	SetTargetFPS(60);
 	float deltaTime;
-	SDL_Event e;
-	bool running = true;
-	while (running) {
-		Uint32 currentTime = SDL_GetTicks();
-		deltaTime = (currentTime - lastFrameTime) / 1000.0f;;
-		lastFrameTime = currentTime;
-		while (SDL_PollEvent(&e)) {
-
-			
-			if (e.type == SDL_QUIT) running = 0;
-			else if (e.type == SDL_KEYDOWN) {
-				if (e.key.keysym.sym == SDLK_w)
-					left_paddle.dy = -PADDLE_SPEED;
-				if (e.key.keysym.sym == SDLK_s)
-					left_paddle.dy = PADDLE_SPEED;
-				if (e.key.keysym.sym == SDLK_UP)
-					right_paddle.dy = -PADDLE_SPEED;
-				if (e.key.keysym.sym == SDLK_DOWN)
-					right_paddle.dy = PADDLE_SPEED;
-			}
-			else if (e.type == SDL_KEYUP) {
-				if (e.key.keysym.sym == SDLK_w || e.key.keysym.sym == SDLK_s)
-					left_paddle.dy = 0;
-				if (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_DOWN)
-					right_paddle.dy = 0;
-			}
-		}
-		
-		left_paddle.y += left_paddle.dy * deltaTime;
-		right_paddle.y += right_paddle.dy * deltaTime;
-		
-		left_paddle.y = clamp(left_paddle.y, 0, 2*HEIGHT/3);
-		right_paddle.y = clamp(right_paddle.y, 0, 2*HEIGHT/3);
-		
-		ball.x += ball.dx * deltaTime * ball.speed;
-		ball.y += ball.dy * deltaTime * ball.speed;
-
-		if ((ball.x < 0 || ball.x > WIDTH) && !ball.reset) {
-			ball.reset = true;
-		}
-		
-		if ((ball.y <= 0 || ball.y + ball.height >= HEIGHT)) {
-			ball.y = clamp(ball.y, 0, HEIGHT - ball.height);
-			ball.dy *= -1;
-		}
 	
-		if (colliding(ball.x, ball.y, ball.width, ball.height, left_paddle.x, left_paddle.y, left_paddle.width, left_paddle.height)) {
-			ball.dx *= -1;
-			ball.x = left_paddle.width;
-			if (ball.speed < 500)
-				ball.speed += PADDLE_POWER;
+	Paddle leftPaddle(0, SCREEN_HEIGHT/2, BLOCK_SCALING, SCREEN_HEIGHT/4, 87, 83);
+	Paddle rightPaddle(SCREEN_WIDTH-BLOCK_SCALING, SCREEN_HEIGHT/2, BLOCK_SCALING, SCREEN_HEIGHT/4, 73, 75);
+	
+	Ball ball(BLOCK_SCALING, BALL_SPEED);
+	
+	while(!WindowShouldClose()) {
+		//keep speed constant regardless of fps
+		deltaTime = GetFrameTime();
+		
+		leftPaddle.update(deltaTime);
+		rightPaddle.update(deltaTime);
+		
+		ball.checkPaddle(leftPaddle);
+		ball.checkPaddle(rightPaddle);
+		ball.checkCourt();
+		ball.update(deltaTime);
+		
+		
+		//if the court resets, put everything back to home positions
+		if (RESET) {
+			ball.x = BALL_STARTX;
+			ball.y = BALL_STARTY;
+			leftPaddle.y = SCREEN_HEIGHT/2;
+			rightPaddle.y = SCREEN_HEIGHT/2;
+			RESET = false;
 		}
 		
-		if (colliding(ball.x, ball.y, ball.width, ball.height, right_paddle.x, right_paddle.y, right_paddle.width, right_paddle.height)) {
-			ball.dx *= -1;
-			ball.x = right_paddle.x - right_paddle.width;
+		BeginDrawing();
+			//two-tone background
+			DrawRectangle(0, 0, SCREEN_WIDTH/2, SCREEN_HEIGHT, SKYBLUE);
+			DrawRectangle(SCREEN_WIDTH/2, 0, SCREEN_WIDTH/2, SCREEN_HEIGHT, GRAY);
 			
-		}
-		
-		if (ball.reset) {
-			ball.x = WIDTH / 2;
-			ball.y = HEIGHT / 2;
-			ball.dx = -ball.dx;
-			ball.reset = false;
-		}
-		
-		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-		SDL_RenderClear(renderer);
-		
-		SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-		
-		SDL_RenderDrawLine(renderer, WIDTH/2, 0, WIDTH/2, HEIGHT);
-		
-		SDL_Rect rect = {left_paddle.x, left_paddle.y, left_paddle.width, left_paddle.height};
-		SDL_RenderFillRect(renderer, &rect);
-		
-		rect = (SDL_Rect){right_paddle.x, right_paddle.y, right_paddle.width, right_paddle.height};
-		SDL_RenderFillRect(renderer, &rect);
-		
-		rect = (SDL_Rect){ball.x, ball.y, ball.width, ball.height};
-		SDL_RenderFillRect(renderer, &rect);
-		
-		SDL_RenderPresent(renderer);
+			//draw scores
+			DrawText(TextFormat("%d", leftScore), SCREEN_WIDTH/4, SCREEN_HEIGHT/12, 48, RAYWHITE);
+			DrawText(TextFormat("%d", rightScore), 3*SCREEN_WIDTH/4, SCREEN_HEIGHT/12, 48, RAYWHITE);
+			
+			ball.draw();
+			//draw paddles
+			leftPaddle.draw();
+			rightPaddle.draw();
+			
+		EndDrawing();
 	}
-	
-	SDL_Quit();
-	return 0;
 }
