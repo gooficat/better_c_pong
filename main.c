@@ -1,19 +1,26 @@
 #include <raylib.h>
+#include <cmath>
+#include <iostream>
 
-const int SCREEN_WIDTH = 960;
-const int SCREEN_HEIGHT = 540;
+
+const int SCREEN_WIDTH = 640;
+const int SCREEN_HEIGHT = 360;
 
 //for keeping paddles the same width as the ball
 int BLOCK_SCALING = 24;
 
 float PADDLE_SPEED = 400.0f;
-float BALL_SPEED = 400.0f;
+float BALL_SPEED = 800.0f;
+
+//how much the speed should be multiplied by on paddle hit
+float PADDLE_MULTIPLE = 1.2f;
 
 int BALL_STARTX = SCREEN_WIDTH/2 - BLOCK_SCALING/2;
 int BALL_STARTY = SCREEN_HEIGHT/2 - BLOCK_SCALING/2;
 
 int leftScore = 0;
 int rightScore = 0;
+
 
 bool RESET = false;
 
@@ -22,6 +29,14 @@ int clamp_i(int in, int min, int max) {
 	if(in < min) return min;
 	return in;
 }
+
+void rotateVector_f(float* x, float* y, float angle) {
+	float sinTheta = std::sin(angle);
+	float cosTheta = std::cos(angle);
+	float newX = *x * cosTheta - *y * sinTheta;
+	*y = *x * sinTheta + *y * cosTheta;
+	*x = newX;
+} 
 
 class Paddle {
 public:
@@ -48,9 +63,10 @@ public:
 	float size;
 	float x_velocity;
 	float y_velocity;
+	float speed;
 	Ball(int size, int speed) :
-		x(BALL_STARTX), y(BALL_STARTY), size(size), x_velocity(speed/2), y_velocity(speed/2) {
-			
+		x(BALL_STARTX), y(BALL_STARTY), size(size), speed(speed) {
+			x_velocity = speed/2;
 		}
 	void draw() {
 		DrawRectangle(x, y, size, size, RAYWHITE);
@@ -59,13 +75,17 @@ public:
 		if (x + size > SCREEN_WIDTH) {
 			RESET = true;
 			leftScore++;
-		}
-		if (x < 0) {
+		}else if (x < 0) {
 			RESET = true;
 			rightScore++;
 		}
-		if (y + size > SCREEN_HEIGHT or y < 0) {
+		if (y + size > SCREEN_HEIGHT) {
 			y_velocity *= -1;
+			y = SCREEN_HEIGHT - size;
+		}
+		else if (y < 0) {
+			y_velocity *= -1;
+			y = 0;
 		}
 	}
 	void update(float deltaTime) {
@@ -74,15 +94,19 @@ public:
 	}
 	void checkPaddle(Paddle& paddle) {
 		if (x + size > paddle.x and x < paddle.x + paddle.width and y + size > paddle.y and y < paddle.y + paddle.height) {
-			x_velocity *= -1;
+			float normal = std::atan2f(x + size/2 - paddle.x + paddle.width/2, y + size/2 - paddle.y + paddle.height/2);
+			float velocity_angle = std::atan2f(x_velocity, y_velocity);  
+			rotateVector_f(&x_velocity, &y_velocity, -velocity_angle);
+			rotateVector_f(&x_velocity, &y_velocity, normal * PADDLE_MULTIPLE);
+			std::cout << "bonk" << std::endl;
+			
 		}
-		
 	}
 };
 
 int main() {
+	SetConfigFlags(FLAG_VSYNC_HINT);
 	InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Pong!");
-	SetTargetFPS(60);
 	float deltaTime;
 	
 	Paddle leftPaddle(0, SCREEN_HEIGHT/2, BLOCK_SCALING, SCREEN_HEIGHT/4, 87, 83);
@@ -92,21 +116,23 @@ int main() {
 	
 	while(!WindowShouldClose()) {
 		//keep speed constant regardless of fps
-		deltaTime = GetFrameTime();
+		deltaTime = 0.0167f;
 		
 		leftPaddle.update(deltaTime);
 		rightPaddle.update(deltaTime);
 		
+		ball.update(deltaTime);
 		ball.checkPaddle(leftPaddle);
 		ball.checkPaddle(rightPaddle);
 		ball.checkCourt();
-		ball.update(deltaTime);
 		
 		
 		//if the court resets, put everything back to home positions
 		if (RESET) {
 			ball.x = BALL_STARTX;
 			ball.y = BALL_STARTY;
+			ball.x_velocity = BALL_SPEED/2;
+			ball.y_velocity = 0;
 			leftPaddle.y = SCREEN_HEIGHT/2;
 			rightPaddle.y = SCREEN_HEIGHT/2;
 			RESET = false;
@@ -117,15 +143,14 @@ int main() {
 			DrawRectangle(0, 0, SCREEN_WIDTH/2, SCREEN_HEIGHT, SKYBLUE);
 			DrawRectangle(SCREEN_WIDTH/2, 0, SCREEN_WIDTH/2, SCREEN_HEIGHT, GRAY);
 			
-			//draw scores
-			DrawText(TextFormat("%d", leftScore), SCREEN_WIDTH/4, SCREEN_HEIGHT/12, 48, RAYWHITE);
-			DrawText(TextFormat("%d", rightScore), 3*SCREEN_WIDTH/4, SCREEN_HEIGHT/12, 48, RAYWHITE);
-			
 			ball.draw();
 			//draw paddles
 			leftPaddle.draw();
 			rightPaddle.draw();
 			
+			//draw scores
+			DrawText(TextFormat("%d", leftScore), SCREEN_WIDTH/4, SCREEN_HEIGHT/12, 48, RAYWHITE);
+			DrawText(TextFormat("%d", rightScore), 3*SCREEN_WIDTH/4, SCREEN_HEIGHT/12, 48, RAYWHITE);
 		EndDrawing();
 	}
 }
